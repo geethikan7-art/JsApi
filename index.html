@@ -1,31 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Peaks Map</title>
-  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css">
+  <meta charset="utf-8" />
+  <title>US Peaks Explorer</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
   <script src="https://js.arcgis.com/4.30/"></script>
+
   <style>
-    html, body, #viewDiv { height: 100%; margin: 0; padding: 0; }
-    #controls {
-      position: absolute; top: 10px; left: 10px; background: white; padding: 10px; z-index: 99;
-      border-radius: 5px; box-shadow: 0 0 5px #888;
+    html, body, #viewDiv {
+      height: 100%;
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
     }
-    #controls input { width: 50px; }
-    #controls button { margin: 2px; }
+
+    #panel {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      width: 280px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+      z-index: 99;
+    }
+
+    #panel h3 {
+      margin: 0 0 10px;
+      text-align: center;
+      font-size: 16px;
+    }
+
+    .section {
+      margin-bottom: 15px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #555;
+    }
+
+    select, input, button {
+      width: 100%;
+      padding: 6px;
+      margin-top: 6px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    select, input {
+      border: 1px solid #ccc;
+    }
+
+    button {
+      border: none;
+      background: #0079c1;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #005e95;
+    }
+
+    .secondary {
+      background: #666;
+    }
+
+    .secondary:hover {
+      background: #444;
+    }
   </style>
 </head>
+
 <body>
   <div id="viewDiv"></div>
-  <div id="controls">
-    <h4>Filter by Elevation</h4>
-    <button id="below1000">Below 1,000 ft</button>
-    <button id="below5000">Below 5,000 ft</button>
-    <button id="below10000">Below 10,000 ft</button>
-    <button id="below15000">Below 15,000 ft</button><br>
-    Custom: <input type="number" id="customVal" placeholder="ft">
-    <button id="customBtn">Apply</button><br><br>
-    <button id="toggleRenderer">Toggle Elevation/State</button>
+
+  <!-- CONTROL PANEL -->
+  <div id="panel">
+    <h3>US Peaks Explorer</h3>
+
+    <div class="section">
+      <div class="section-title">Filter by Elevation (ft)</div>
+
+      <select id="elevationSelect">
+        <option value="">-- Select Elevation --</option>
+        <option value="1000">Below 1,000 ft</option>
+        <option value="5000">Below 5,000 ft</option>
+        <option value="10000">Below 10,000 ft</option>
+        <option value="15000">Below 15,000 ft</option>
+        <option value="custom">Custom Value</option>
+      </select>
+
+      <input
+        type="number"
+        id="customElevation"
+        placeholder="Enter elevation (ft)"
+        style="display:none;"
+      />
+
+      <button id="applyFilter">Apply Filter</button>
+      <button id="clearFilter" class="secondary">Show All</button>
+    </div>
+
+    <div class="section">
+      <button id="toggleRenderer" class="secondary">
+        Toggle Elevation / State
+      </button>
+    </div>
   </div>
 
   <script>
@@ -33,9 +118,11 @@
       "esri/Map",
       "esri/views/MapView",
       "esri/layers/FeatureLayer",
-      "esri/widgets/Legend"
-    ], function(Map, MapView, FeatureLayer, Legend) {
+      "esri/widgets/Legend",
+       "esri/rest/support/Query"
+    ], function (Map, MapView, FeatureLayer, Legend,Query) {
 
+      // MAP
       const map = new Map({
         basemap: "topo-vector"
       });
@@ -47,94 +134,218 @@
         zoom: 4
       });
 
-      // Elevation Renderer
+      /* -----------------------------------
+         ELEVATION-BASED RENDERER
+      ----------------------------------- */
       const elevationRenderer = {
-        type: "simple",
-        field: "ELEVATION_FT",
+        type: "class-breaks",
+        field: "ELEV_ft",
+        legendOptions: { title: "Peak Elevation (ft)" },
         classBreakInfos: [
-          { minValue: 0, maxValue: 1000, symbol: { type: "simple-marker", color: "#d4f0f0", size: 8 }, label: "Below 1,000 ft" },
-          { minValue: 1001, maxValue: 5000, symbol: { type: "simple-marker", color: "#a1c9f1", size: 10 }, label: "Below 5,000 ft" },
-          { minValue: 5001, maxValue: 10000, symbol: { type: "simple-marker", color: "#2a6fc3", size: 12 }, label: "Below 10,000 ft" },
-          { minValue: 10001, maxValue: 15000, symbol: { type: "simple-marker", color: "#1a1f71", size: 14 }, label: "Below 15,000 ft" },
-          { minValue: 15001, maxValue: 30000, symbol: { type: "simple-marker", color: "#550a2c", size: 16 }, label: "Above 15,000 ft" }
+          {
+            minValue: 0,
+            maxValue: 10000,
+            label: "Below 10,000 ft",
+            symbol: {
+              type: "simple-marker",
+              size: 6,
+              color: "#74add1",
+              outline: { color: "#333", width: 0.5 }
+            }
+          },
+          {
+            minValue: 10000,
+            maxValue: 30000,
+            label: "Above 10,000 ft",
+            symbol: {
+              type: "simple-marker",
+              size: 14,
+              color: "#d73027",
+              outline: { color: "#333", width: 0.5 }
+            }
+          }
         ]
       };
 
-      // FeatureLayer
+      /* -----------------------------------
+         STATE-BASED RENDERER
+      ----------------------------------- */
+      let stateRenderer = {
+        type: "unique-value",
+        field: "STATE",
+        legendOptions: { title: "Peaks by State" },
+        defaultSymbol: {
+          type: "simple-marker",
+          size: 8,
+          color: "#cccccc",
+          outline: { color: "#444", width: 0.5 }
+        }
+      };
+
+      /* -----------------------------------
+         FEATURE LAYER
+      ----------------------------------- */
       const peaksLayer = new FeatureLayer({
-        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Prominent_Peaks_US/FeatureServer/0", 
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Prominent_Peaks_US/FeatureServer/0",
+
         renderer: elevationRenderer,
-        outFields: ["PEAK_NAME", "STATE", "ELEVATION_FT"],
-        maxScale: 50000, // only show when zoomed in
-        popupTemplate: {
-          title: "{PEAK_NAME}",
-          content: `
-            <table>
-              <tr><th>Peak Name</th><td>{PEAK_NAME}</td></tr>
-              <tr><th>State</th><td>{STATE}</td></tr>
-              <tr><th>Elevation (ft)</th><td>{ELEVATION_FT}</td></tr>
-              <tr><th>Elevation (m)</th><td>{expression/ELEVATION_M}</td></tr>
-            </table>
-          `,
-          expressionInfos: [{
-            name: "ELEVATION_M",
-            title: "Elevation (m)",
-            expression: "Round($feature.ELEVATION_FT * 0.3048, 2)"
-          }]
+        outFields: ["*"],
+
+        // PERFORMANCE OPTIMIZATION
+      
+        maxScale: 50000,
+
+        featureReduction: {
+          type: "selection"
         },
+
+        popupTemplate: {
+          title: "{MTN_PEAK}",
+          content: `
+            <table style="width:100%; border-collapse:collapse; font-size:13px; border:1px solid #dcdcdc;">
+              <tr style="background:#f3f3f3;">
+                <th style="padding:8px; border-right:1px solid #dcdcdc;">Peak Name</th>
+                <td style="padding:8px;">{MTN_PEAK}</td>
+              </tr>
+              <tr>
+                <th style="padding:8px; border-right:1px solid #dcdcdc;">State</th>
+                <td style="padding:8px;">{STATE}</td>
+              </tr>
+              <tr style="background:#f9f9f9;">
+                <th style="padding:8px; border-right:1px solid #dcdcdc;">Elevation (ft)</th>
+                <td style="padding:8px;">{ELEV_ft}</td>
+              </tr>
+              <tr>
+                <th style="padding:8px; border-right:1px solid #dcdcdc;">Elevation (m)</th>
+                <td style="padding:8px;">{ELEV_m}</td>
+              </tr>
+            </table>
+          `
+        },
+
+        // LABELS FOR HIGH PEAKS
         labelingInfo: [{
+          where: "ELEV_ft > 15000",
+          labelExpressionInfo: {
+            expression: "$feature.MTN_PEAK"
+          },
           symbol: {
             type: "text",
-            color: "red",
-            font: { size: 12, weight: "bold" }
-          },
-          labelExpressionInfo: { expression: "$feature.PEAK_NAME" },
-          where: "ELEVATION_FT > 15000"
+            color: "#b30000",
+            haloColor: "white",
+            haloSize: 1,
+            font: {
+              size: 12,
+              weight: "bold"
+            }
+          }
         }]
       });
 
-      map.add(peaksLayer);
-
-      // Legend
-      const legend = new Legend({ view: view });
+      view.map.add(peaksLayer);
+      const heatmapRenderer = {
+  type: "heatmap",
+  field: "ELEV_ft",
+  blurRadius: 12,
+  maxPixelIntensity: 200,
+  minPixelIntensity: 0
+};
+view.watch("scale", scale => {
+  peaksLayer.renderer = scale > 15000000 ? heatmapRenderer : elevationRenderer;
+});
+      // LEGEND
+      const legend = new Legend({ view });
       view.ui.add(legend, "bottom-right");
 
-      // Feature Filter Function
-      function filterPeaks(min, max) {
-        view.whenLayerView(peaksLayer).then(lv => {
-          lv.filter = { where: `ELEVATION_FT >= ${min} AND ELEVATION_FT <= ${max}` };
-        });
-      }
+      /* -----------------------------------
+         FILTER LOGIC
+      ----------------------------------- */
+      let layerView;
+      view.whenLayerView(peaksLayer).then(lv => layerView = lv);
 
-      // Filter Buttons
-      document.getElementById("below1000").onclick = () => filterPeaks(0, 1000);
-      document.getElementById("below5000").onclick = () => filterPeaks(0, 5000);
-      document.getElementById("below10000").onclick = () => filterPeaks(0, 10000);
-      document.getElementById("below15000").onclick = () => filterPeaks(0, 15000);
-      document.getElementById("customBtn").onclick = () => {
-        const val = parseFloat(document.getElementById("customVal").value);
-        if (!isNaN(val)) filterPeaks(0, val);
+      const select = document.getElementById("elevationSelect");
+      const customInput = document.getElementById("customElevation");
+
+      select.onchange = () => {
+        customInput.style.display = select.value === "custom" ? "block" : "none";
       };
 
-      // Renderer toggle (Elevation <-> State)
-      let isElevation = true;
-      document.getElementById("toggleRenderer").onclick = () => {
-        if (isElevation) {
-          peaksLayer.renderer = {
-            type: "unique-value",
-            field: "STATE",
-            defaultSymbol: { type: "simple-marker", size: 10, color: "gray" },
-            uniqueValueInfos: [
-              { value: "CO", symbol: { type: "simple-marker", color: "blue", size: 10 }, label: "Colorado" },
-              { value: "CA", symbol: { type: "simple-marker", color: "green", size: 10 }, label: "California" }
-              // Add other states
-            ]
-          };
-        } else {
-          peaksLayer.renderer = elevationRenderer;
-        }
-        isElevation = !isElevation;
+      document.getElementById("applyFilter").onclick = () => {
+        if (!layerView) return;
+
+        const maxVal = select.value === "custom"
+          ? Number(customInput.value)
+          : Number(select.value);
+
+        if (!maxVal) return;
+
+        layerView.filter = {
+          where: `ELEV_ft <= ${maxVal}`
+        };
       };
+
+      document.getElementById("clearFilter").onclick = () => {
+        layerView.filter = null;
+        select.value = "";
+        customInput.value = "";
+        customInput.style.display = "none";
+      };
+
+      /* -----------------------------------
+         RENDERER TOGGLE
+      ----------------------------------- */
+     let elevationMode = true; 
+
+// Prepare stateRenderer once
+peaksLayer.load().then(() => {
+    // Create a proper query
+    const query = peaksLayer.createQuery();
+    query.returnDistinctValues = true;
+    query.outFields = ["STATE"];
+
+    peaksLayer.queryFeatures(query).then(results => {
+      // Get unique states
+      const states = [...new Set(results.features.map(f => f.attributes.STATE).filter(s => s))];
+
+      // Build uniqueValueInfos
+      const uniqueValueInfos = states.map((state, i) => {
+        const hue = (i * 360 / states.length) % 360;
+        const color = `hsl(${hue}, 70%, 50%)`;
+        return {
+          value: state,
+          symbol: {
+            type: "simple-marker",
+            color: color,
+            size: 10,
+            outline: { color: "#333", width: 0.5 }
+          },
+          label: state
+        };
+      });
+
+      // Prepare state renderer
+      stateRenderer = {
+        type: "unique-value",
+        field: "STATE",
+        uniqueValueInfos: uniqueValueInfos,
+        defaultSymbol: { type: "simple-marker", size: 10, color: "#999" }
+      };
+
+      console.log("State renderer ready:", stateRenderer);
+    });
+  });
+
+// Toggle renderer on button click
+document.getElementById("toggleRenderer").onclick = () => {
+  if (!stateRenderer) {
+    alert("Please wait, preparing state renderer...");
+    return;
+  }
+
+  peaksLayer.renderer = elevationMode ? stateRenderer : elevationRenderer;
+  elevationMode = !elevationMode;
+};
+
 
     });
   </script>
