@@ -62,7 +62,7 @@
 
       // FeatureLayer
       const peaksLayer = new FeatureLayer({
-        url: "YOUR_FEATURE_LAYER_URL", // <-- Replace with your FeatureLayer URL
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Prominent_Peaks_US/FeatureServer/0", 
         renderer: elevationRenderer,
         outFields: ["PEAK_NAME", "STATE", "ELEVATION_FT"],
         maxScale: 50000, // only show when zoomed in
