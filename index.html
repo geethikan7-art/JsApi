@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Peaks Map</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css">
+  <script src="https://js.arcgis.com/4.30/"></script>
+  <style>
+    html, body, #viewDiv { height: 100%; margin: 0; padding: 0; }
+    #controls {
+      position: absolute; top: 10px; left: 10px; background: white; padding: 10px; z-index: 99;
+      border-radius: 5px; box-shadow: 0 0 5px #888;
+    }
+    #controls input { width: 50px; }
+    #controls button { margin: 2px; }
+  </style>
+</head>
+<body>
+  <div id="viewDiv"></div>
+  <div id="controls">
+    <h4>Filter by Elevation</h4>
+    <button id="below1000">Below 1,000 ft</button>
+    <button id="below5000">Below 5,000 ft</button>
+    <button id="below10000">Below 10,000 ft</button>
+    <button id="below15000">Below 15,000 ft</button><br>
+    Custom: <input type="number" id="customVal" placeholder="ft">
+    <button id="customBtn">Apply</button><br><br>
+    <button id="toggleRenderer">Toggle Elevation/State</button>
+  </div>
+
+  <script>
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/FeatureLayer",
+      "esri/widgets/Legend"
+    ], function(Map, MapView, FeatureLayer, Legend) {
+
+      const map = new Map({
+        basemap: "topo-vector"
+      });
+
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [-110, 40],
+        zoom: 4
+      });
+
+      // Elevation Renderer
+      const elevationRenderer = {
+        type: "simple",
+        field: "ELEVATION_FT",
+        classBreakInfos: [
+          { minValue: 0, maxValue: 1000, symbol: { type: "simple-marker", color: "#d4f0f0", size: 8 }, label: "Below 1,000 ft" },
+          { minValue: 1001, maxValue: 5000, symbol: { type: "simple-marker", color: "#a1c9f1", size: 10 }, label: "Below 5,000 ft" },
+          { minValue: 5001, maxValue: 10000, symbol: { type: "simple-marker", color: "#2a6fc3", size: 12 }, label: "Below 10,000 ft" },
+          { minValue: 10001, maxValue: 15000, symbol: { type: "simple-marker", color: "#1a1f71", size: 14 }, label: "Below 15,000 ft" },
+          { minValue: 15001, maxValue: 30000, symbol: { type: "simple-marker", color: "#550a2c", size: 16 }, label: "Above 15,000 ft" }
+        ]
+      };
+
+      // FeatureLayer
+      const peaksLayer = new FeatureLayer({
+        url: "YOUR_FEATURE_LAYER_URL", // <-- Replace with your FeatureLayer URL
+        renderer: elevationRenderer,
+        outFields: ["PEAK_NAME", "STATE", "ELEVATION_FT"],
+        maxScale: 50000, // only show when zoomed in
+        popupTemplate: {
+          title: "{PEAK_NAME}",
+          content: `
+            <table>
+              <tr><th>Peak Name</th><td>{PEAK_NAME}</td></tr>
+              <tr><th>State</th><td>{STATE}</td></tr>
+              <tr><th>Elevation (ft)</th><td>{ELEVATION_FT}</td></tr>
+              <tr><th>Elevation (m)</th><td>{expression/ELEVATION_M}</td></tr>
+            </table>
+          `,
+          expressionInfos: [{
+            name: "ELEVATION_M",
+            title: "Elevation (m)",
+            expression: "Round($feature.ELEVATION_FT * 0.3048, 2)"
+          }]
+        },
+        labelingInfo: [{
+          symbol: {
+            type: "text",
+            color: "red",
+            font: { size: 12, weight: "bold" }
+          },
+          labelExpressionInfo: { expression: "$feature.PEAK_NAME" },
+          where: "ELEVATION_FT > 15000"
+        }]
+      });
+
+      map.add(peaksLayer);
+
+      // Legend
+      const legend = new Legend({ view: view });
+      view.ui.add(legend, "bottom-right");
+
+      // Feature Filter Function
+      function filterPeaks(min, max) {
+        view.whenLayerView(peaksLayer).then(lv => {
+          lv.filter = { where: `ELEVATION_FT >= ${min} AND ELEVATION_FT <= ${max}` };
+        });
+      }
+
+      // Filter Buttons
+      document.getElementById("below1000").onclick = () => filterPeaks(0, 1000);
+      document.getElementById("below5000").onclick = () => filterPeaks(0, 5000);
+      document.getElementById("below10000").onclick = () => filterPeaks(0, 10000);
+      document.getElementById("below15000").onclick = () => filterPeaks(0, 15000);
+      document.getElementById("customBtn").onclick = () => {
+        const val = parseFloat(document.getElementById("customVal").value);
+        if (!isNaN(val)) filterPeaks(0, val);
+      };
+
+      // Renderer toggle (Elevation <-> State)
+      let isElevation = true;
+      document.getElementById("toggleRenderer").onclick = () => {
+        if (isElevation) {
+          peaksLayer.renderer = {
+            type: "unique-value",
+            field: "STATE",
+            defaultSymbol: { type: "simple-marker", size: 10, color: "gray" },
+            uniqueValueInfos: [
+              { value: "CO", symbol: { type: "simple-marker", color: "blue", size: 10 }, label: "Colorado" },
+              { value: "CA", symbol: { type: "simple-marker", color: "green", size: 10 }, label: "California" }
+              // Add other states
+            ]
+          };
+        } else {
+          peaksLayer.renderer = elevationRenderer;
+        }
+        isElevation = !isElevation;
+      };
+
+    });
+  </script>
+</body>
+</html>
